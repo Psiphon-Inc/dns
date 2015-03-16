@@ -170,7 +170,7 @@ func (c *Client) exchange(m *Msg, a string) (r *Msg, rtt time.Duration, err erro
 func (co *Conn) ReadMsg() (*Msg, error) {
 	var p []byte
 	m := new(Msg)
-	if _, ok := co.Conn.(*net.TCPConn); ok {
+	if _, ok := co.Conn.(*net.UDPConn); !ok { // Any net.Conn but *net.UDPConn uses DNS-over-TCP protocol
 		p = make([]byte, MaxMsgSize)
 	} else {
 		if co.UDPSize >= 512 {
@@ -206,8 +206,8 @@ func (co *Conn) Read(p []byte) (n int, err error) {
 	if len(p) < 2 {
 		return 0, io.ErrShortBuffer
 	}
-	if t, ok := co.Conn.(*net.TCPConn); ok {
-		n, err = t.Read(p[0:2])
+	if _, ok := co.Conn.(*net.UDPConn); !ok { // Any net.Conn but *net.UDPConn uses DNS-over-TCP protocol
+		n, err = co.Conn.Read(p[0:2])
 		if err != nil || n != 2 {
 			return n, err
 		}
@@ -218,13 +218,13 @@ func (co *Conn) Read(p []byte) (n int, err error) {
 		if int(l) > len(p) {
 			return int(l), io.ErrShortBuffer
 		}
-		n, err = t.Read(p[:l])
+		n, err = co.Conn.Read(p[:l])
 		if err != nil {
 			return n, err
 		}
 		i := n
 		for i < int(l) {
-			j, err := t.Read(p[i:int(l)])
+			j, err := co.Conn.Read(p[i:int(l)])
 			if err != nil {
 				return i, err
 			}
@@ -269,7 +269,7 @@ func (co *Conn) WriteMsg(m *Msg) (err error) {
 
 // Write implements the net.Conn Write method.
 func (co *Conn) Write(p []byte) (n int, err error) {
-	if t, ok := co.Conn.(*net.TCPConn); ok {
+	if _, ok := co.Conn.(*net.UDPConn); !ok { // Any net.Conn but *net.UDPConn uses DNS-over-TCP protocol
 		lp := len(p)
 		if lp < 2 {
 			return 0, io.ErrShortBuffer
@@ -280,7 +280,7 @@ func (co *Conn) Write(p []byte) (n int, err error) {
 		l := make([]byte, 2, lp+2)
 		l[0], l[1] = packUint16(uint16(lp))
 		p = append(l, p...)
-		n, err := io.Copy(t, bytes.NewReader(p))
+		n, err := io.Copy(co.Conn, bytes.NewReader(p))
 		return int(n), err
 	}
 	n, err = co.Conn.(*net.UDPConn).Write(p)
