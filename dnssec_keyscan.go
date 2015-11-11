@@ -1,17 +1,19 @@
 package dns
 
 import (
+	"crypto"
 	"crypto/dsa"
 	"crypto/ecdsa"
 	"crypto/rsa"
 	"io"
 	"math/big"
+	"strconv"
 	"strings"
 )
 
 // NewPrivateKey returns a PrivateKey by parsing the string s.
 // s should be in the same form of the BIND private key files.
-func (k *DNSKEY) NewPrivateKey(s string) (PrivateKey, error) {
+func (k *DNSKEY) NewPrivateKey(s string) (crypto.PrivateKey, error) {
 	if s[len(s)-1] != '\n' { // We need a closing newline
 		return k.ReadPrivateKey(strings.NewReader(s+"\n"), "")
 	}
@@ -22,7 +24,7 @@ func (k *DNSKEY) NewPrivateKey(s string) (PrivateKey, error) {
 // only used in error reporting.
 // The public key must be known, because some cryptographic algorithms embed
 // the public inside the privatekey.
-func (k *DNSKEY) ReadPrivateKey(q io.Reader, file string) (PrivateKey, error) {
+func (k *DNSKEY) ReadPrivateKey(q io.Reader, file string) (crypto.PrivateKey, error) {
 	m, e := parseKey(q, file)
 	if m == nil {
 		return nil, e
@@ -34,8 +36,12 @@ func (k *DNSKEY) ReadPrivateKey(q io.Reader, file string) (PrivateKey, error) {
 		return nil, ErrPrivKey
 	}
 	// TODO(mg): check if the pubkey matches the private key
-	switch m["algorithm"] {
-	case "3 (DSA)":
+	algo, err := strconv.Atoi(strings.SplitN(m["algorithm"], " ", 2)[0])
+	if err != nil {
+		return nil, ErrPrivKey
+	}
+	switch uint8(algo) {
+	case DSA:
 		priv, e := readPrivateKeyDSA(m)
 		if e != nil {
 			return nil, e
@@ -45,16 +51,16 @@ func (k *DNSKEY) ReadPrivateKey(q io.Reader, file string) (PrivateKey, error) {
 			return nil, ErrKey
 		}
 		priv.PublicKey = *pub
-		return (*DSAPrivateKey)(priv), e
-	case "1 (RSAMD5)":
+		return priv, e
+	case RSAMD5:
 		fallthrough
-	case "5 (RSASHA1)":
+	case RSASHA1:
 		fallthrough
-	case "7 (RSASHA1NSEC3SHA1)":
+	case RSASHA1NSEC3SHA1:
 		fallthrough
-	case "8 (RSASHA256)":
+	case RSASHA256:
 		fallthrough
-	case "10 (RSASHA512)":
+	case RSASHA512:
 		priv, e := readPrivateKeyRSA(m)
 		if e != nil {
 			return nil, e
@@ -64,12 +70,12 @@ func (k *DNSKEY) ReadPrivateKey(q io.Reader, file string) (PrivateKey, error) {
 			return nil, ErrKey
 		}
 		priv.PublicKey = *pub
-		return (*RSAPrivateKey)(priv), e
-	case "12 (ECC-GOST)":
+		return priv, e
+	case ECCGOST:
 		return nil, ErrPrivKey
-	case "13 (ECDSAP256SHA256)":
+	case ECDSAP256SHA256:
 		fallthrough
-	case "14 (ECDSAP384SHA384)":
+	case ECDSAP384SHA384:
 		priv, e := readPrivateKeyECDSA(m)
 		if e != nil {
 			return nil, e
@@ -79,7 +85,7 @@ func (k *DNSKEY) ReadPrivateKey(q io.Reader, file string) (PrivateKey, error) {
 			return nil, ErrKey
 		}
 		priv.PublicKey = *pub
-		return (*ECDSAPrivateKey)(priv), e
+		return priv, e
 	default:
 		return nil, ErrPrivKey
 	}

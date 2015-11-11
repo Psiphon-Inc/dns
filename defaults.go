@@ -24,7 +24,9 @@ func (dns *Msg) SetReply(request *Msg) *Msg {
 	return dns
 }
 
-// SetQuestion creates a question message.
+// SetQuestion creates a question message, it sets the Question
+// section, generates an Id and sets the RecursionDesired (RD)
+// bit to true.
 func (dns *Msg) SetQuestion(z string, t uint16) *Msg {
 	dns.Id = Id()
 	dns.RecursionDesired = true
@@ -33,7 +35,9 @@ func (dns *Msg) SetQuestion(z string, t uint16) *Msg {
 	return dns
 }
 
-// SetNotify creates a notify message.
+// SetNotify creates a notify message, it sets the Question
+// section, generates an Id and sets the Authoritative (AA)
+// bit to true.
 func (dns *Msg) SetNotify(z string) *Msg {
 	dns.Opcode = OpcodeNotify
 	dns.Authoritative = true
@@ -146,11 +150,14 @@ func (dns *Msg) IsEdns0() *OPT {
 	return nil
 }
 
-// IsDomainName checks if s is a valid domainname, it returns
-// the number of labels and true, when a domain name is valid.
-// Note that non fully qualified domain name is considered valid, in this case the
-// last label is counted in the number of labels.
-// When false is returned the number of labels is not defined.
+// IsDomainName checks if s is a valid domain name, it returns the number of
+// labels and true, when a domain name is valid.  Note that non fully qualified
+// domain name is considered valid, in this case the last label is counted in
+// the number of labels.  When false is returned the number of labels is not
+// defined.  Also note that this function is extremely liberal; almost any
+// string is a valid domain name as the DNS is 8 bit protocol. It checks if each
+// label fits in 63 characters, but there is no length check for the entire
+// string s. I.e.  a domain name longer than 255 characters is considered valid.
 func IsDomainName(s string) (labels int, ok bool) {
 	_, labels, err := packDomainName(s, nil, 0, nil, false)
 	return labels, err == nil
@@ -182,6 +189,33 @@ func IsFqdn(s string) bool {
 		return false
 	}
 	return s[l-1] == '.'
+}
+
+// IsRRset checks if a set of RRs is a valid RRset as defined by RFC 2181.
+// This means the RRs need to have the same type, name, and class. Returns true
+// if the RR set is valid, otherwise false.
+func IsRRset(rrset []RR) bool {
+	if len(rrset) == 0 {
+		return false
+	}
+	if len(rrset) == 1 {
+		return true
+	}
+	rrHeader := rrset[0].Header()
+	rrType := rrHeader.Rrtype
+	rrClass := rrHeader.Class
+	rrName := rrHeader.Name
+
+	for _, rr := range rrset[1:] {
+		curRRHeader := rr.Header()
+		if curRRHeader.Rrtype != rrType || curRRHeader.Class != rrClass || curRRHeader.Name != rrName {
+			// Mismatch between the records, so this is not a valid rrset for
+			//signing/verifying
+			return false
+		}
+	}
+
+	return true
 }
 
 // Fqdn return the fully qualified domain name from s.
