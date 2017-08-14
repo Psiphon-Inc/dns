@@ -4,6 +4,7 @@ package dns
 
 import (
 	"net"
+	"strings"
 	"testing"
 	"time"
 )
@@ -16,8 +17,7 @@ func getIP(s string) string {
 	return a[0]
 }
 
-// flaky, need to setup local server and test from
-// that.
+// flaky, need to setup local server and test from that.
 func TestAXFR_Miek(t *testing.T) {
 	// This test runs against a server maintained by Miek
 	if testing.Short() {
@@ -58,11 +58,11 @@ func TestAXFR_NLNL_MultipleEnvelopes(t *testing.T) {
 
 	tr := new(Transfer)
 	if a, err := tr.In(m, net.JoinHostPort(server, "53")); err != nil {
-		t.Fatalf("Failed to setup axfr %v for server: %v", err, server)
+		t.Fatalf("failed to setup axfr %v for server: %v", err, server)
 	} else {
 		for ex := range a {
 			if ex.Error != nil {
-				t.Errorf("Error %v", ex.Error)
+				t.Errorf("error %v", ex.Error)
 				break
 			}
 		}
@@ -156,6 +156,29 @@ func testAXFRSIDN(t *testing.T, host, alg string) {
 	for e := range c {
 		if e.Error != nil {
 			t.Fatal(e.Error)
+		}
+	}
+}
+
+func TestAXFRFailNotAuth(t *testing.T) {
+	// This tests run against a server maintained by SIDN labs, see:
+	// https://workbench.sidnlabs.nl/
+	if testing.Short() {
+		return
+	}
+	x := new(Transfer)
+
+	m := new(Msg)
+	m.SetAxfr("sidnlabs.nl.")
+	c, err := x.In(m, "yadifa.sidnlabs.nl:53")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for e := range c {
+		if e.Error != nil {
+			if !strings.HasPrefix(e.Error.Error(), "dns: bad xfr rcode:") {
+				t.Fatal(e.Error)
+			}
 		}
 	}
 }

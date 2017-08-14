@@ -1,8 +1,6 @@
 package dns
 
-import (
-	"testing"
-)
+import "testing"
 
 func TestCompareDomainName(t *testing.T) {
 	s1 := "www.miek.nl."
@@ -35,6 +33,9 @@ func TestCompareDomainName(t *testing.T) {
 	if CompareDomainName(".", ".") != 0 {
 		t.Errorf("%s with %s should be %d", ".", ".", 0)
 	}
+	if CompareDomainName("test.com.", "TEST.COM.") != 2 {
+		t.Errorf("test.com. and TEST.COM. should be an exact match")
+	}
 }
 
 func TestSplit(t *testing.T) {
@@ -61,9 +62,9 @@ func TestSplit(t *testing.T) {
 
 func TestSplit2(t *testing.T) {
 	splitter := map[string][]int{
-		"www.miek.nl.": []int{0, 4, 9},
-		"www.miek.nl":  []int{0, 4, 9},
-		"nl":           []int{0},
+		"www.miek.nl.": {0, 4, 9},
+		"www.miek.nl":  {0, 4, 9},
+		"nl":           {0},
 	}
 	for s, i := range splitter {
 		x := Split(s)
@@ -125,13 +126,14 @@ func TestCountLabel(t *testing.T) {
 
 func TestSplitDomainName(t *testing.T) {
 	labels := map[string][]string{
-		"miek.nl":       []string{"miek", "nl"},
+		"miek.nl":       {"miek", "nl"},
 		".":             nil,
-		"www.miek.nl.":  []string{"www", "miek", "nl"},
-		"www.miek.nl":   []string{"www", "miek", "nl"},
-		"www..miek.nl":  []string{"www", "", "miek", "nl"},
-		`www\.miek.nl`:  []string{`www\.miek`, "nl"},
-		`www\\.miek.nl`: []string{`www\\`, "miek", "nl"},
+		"www.miek.nl.":  {"www", "miek", "nl"},
+		"www.miek.nl":   {"www", "miek", "nl"},
+		"www..miek.nl":  {"www", "", "miek", "nl"},
+		`www\.miek.nl`:  {`www\.miek`, "nl"},
+		`www\\.miek.nl`: {`www\\`, "miek", "nl"},
+		".www.miek.nl.": {"", "www", "miek", "nl"},
 	}
 domainLoop:
 	for domain, splits := range labels {
@@ -155,13 +157,13 @@ func TestIsDomainName(t *testing.T) {
 		lab int
 	}
 	names := map[string]*ret{
-		"..":               &ret{false, 1},
-		"@.":               &ret{true, 1},
-		"www.example.com":  &ret{true, 3},
-		"www.e%ample.com":  &ret{true, 3},
-		"www.example.com.": &ret{true, 3},
-		"mi\\k.nl.":        &ret{true, 2},
-		"mi\\k.nl":         &ret{true, 2},
+		"..":               {false, 1},
+		"@.":               {true, 1},
+		"www.example.com":  {true, 3},
+		"www.e%ample.com":  {true, 3},
+		"www.example.com.": {true, 3},
+		"mi\\k.nl.":        {true, 2},
+		"mi\\k.nl":         {true, 2},
 	}
 	for d, ok := range names {
 		l, k := IsDomainName(d)
@@ -185,12 +187,14 @@ func BenchmarkLenLabels(b *testing.B) {
 }
 
 func BenchmarkCompareLabels(b *testing.B) {
+	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		CompareDomainName("www.example.com", "aa.example.com")
 	}
 }
 
 func BenchmarkIsSubDomain(b *testing.B) {
+	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		IsSubDomain("www.example.com", "aa.example.com")
 		IsSubDomain("example.com", "aa.example.com")
